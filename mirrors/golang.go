@@ -10,7 +10,7 @@ import (
 )
 
 type goMirror struct {
-	GoBaseMirror string
+	GoBaseMirror string `json:"Base"`
 }
 
 const (
@@ -43,10 +43,6 @@ func (g *goMirror) GetLatestURL() (string, error) {
 		return "", err
 	}
 	return g.GetURL(latest[0])
-}
-
-func (g *goMirror) Detail() *Detail {
-	return &Detail{MirrorBase: g.GoBaseMirror}
 }
 
 func (g *goMirror) getGoVersions() ([]string, error) {

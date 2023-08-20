@@ -7,8 +7,8 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/modern-devops/xvm/env"
 	"github.com/modern-devops/xvm/mirrors"
+	"github.com/modern-devops/xvm/sdks"
 
 	"golang.org/x/mod/modfile"
 )
@@ -31,10 +31,10 @@ func Gvm(home string) *gvm {
 	return &gvm{home: home}
 }
 
-func (g *gvm) Info() (*env.SdkInfo, error) {
-	return &env.SdkInfo{
+func (g *gvm) Info() *sdks.SdkInfo {
+	return &sdks.SdkInfo{
 		Name: name,
-		Commands: []env.Command{
+		Tools: []sdks.Tool{
 			{
 				Name: name,
 				Path: filepath.Join(bin, commandFile()),
@@ -42,7 +42,7 @@ func (g *gvm) Info() (*env.SdkInfo, error) {
 		},
 		BinPaths: []string{filepath.Join(g.home, "go", "bin")},
 		Mirror:   mirrors.Go(),
-	}, nil
+	}
 }
 
 // DetectVersion try to detect the go version

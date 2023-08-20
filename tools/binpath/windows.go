@@ -17,7 +17,7 @@ const (
 )
 
 // AddUserPath add paths to user's environment path
-func AddUserPath(prior bool, paths ...string) error {
+func AddUserPath(paths ...string) error {
 	k, err := registry.OpenKey(registry.CURRENT_USER, env, registry.ALL_ACCESS)
 	if err != nil {
 		return fmt.Errorf(`failed to open key: HKEY_CURRENT_USER\%s, %w`, env, err)
@@ -30,6 +30,10 @@ func AddUserPath(prior bool, paths ...string) error {
 		return fmt.Errorf(`failed to set value: %s, %w`, path, err)
 	}
 	return nil
+}
+
+func PathsPlaceholder(paths ...string) string {
+	return strings.Join(paths, string(os.PathListSeparator))
 }
 
 func addPaths(op string, paths ...string) string {

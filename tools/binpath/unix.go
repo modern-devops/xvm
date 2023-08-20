@@ -34,10 +34,16 @@ func AddUserPath(paths ...string) error {
 	return nil
 }
 
+func PathsPlaceholder(paths ...string) string {
+	ct := getCurrentTerminal()
+	return ct.PathsPlaceholder(paths...)
+}
+
 type terminal interface {
 	Name() string
 	Rc() string
 	AddPathsShell(paths ...string) string
+	PathsPlaceholder(paths ...string) string
 }
 
 type terminalBash struct{}
@@ -54,7 +60,11 @@ func (t *terminalBash) Rc() string {
 }
 
 func (t *terminalBash) AddPathsShell(paths ...string) string {
-	return bashLikeShell(paths...)
+	return bashLikeShell(t.PathsPlaceholder(paths...))
+}
+
+func (t *terminalBash) PathsPlaceholder(paths ...string) string {
+	return strings.Join(paths, ":")
 }
 
 type terminalSh struct{}
@@ -68,7 +78,11 @@ func (t *terminalSh) Rc() string {
 }
 
 func (t *terminalSh) AddPathsShell(paths ...string) string {
-	return bashLikeShell(paths...)
+	return bashLikeShell(t.PathsPlaceholder(paths...))
+}
+
+func (t *terminalSh) PathsPlaceholder(paths ...string) string {
+	return strings.Join(paths, ":")
 }
 
 type terminalZsh struct{}
@@ -82,7 +96,11 @@ func (t *terminalZsh) Rc() string {
 }
 
 func (t *terminalZsh) AddPathsShell(paths ...string) string {
-	return bashLikeShell(paths...)
+	return bashLikeShell(t.PathsPlaceholder(paths...))
+}
+
+func (t *terminalZsh) PathsPlaceholder(paths ...string) string {
+	return strings.Join(paths, ":")
 }
 
 type terminalFish struct{}
@@ -96,7 +114,11 @@ func (t *terminalFish) Rc() string {
 }
 
 func (t *terminalFish) AddPathsShell(paths ...string) string {
-	return fishShell(paths...)
+	return fishShell(t.PathsPlaceholder(paths...))
+}
+
+func (t *terminalFish) PathsPlaceholder(paths ...string) string {
+	return strings.Join(paths, " ")
 }
 
 type terminalZcsh struct{}
@@ -110,7 +132,11 @@ func (t *terminalZcsh) Rc() string {
 }
 
 func (t *terminalZcsh) AddPathsShell(paths ...string) string {
-	return cshShell(paths...)
+	return cshShell(t.PathsPlaceholder(paths...))
+}
+
+func (t *terminalZcsh) PathsPlaceholder(paths ...string) string {
+	return strings.Join(paths, " ")
 }
 
 type terminalCsh struct{}
@@ -124,19 +150,23 @@ func (t *terminalCsh) Rc() string {
 }
 
 func (t *terminalCsh) AddPathsShell(paths ...string) string {
-	return cshShell(paths...)
+	return cshShell(t.PathsPlaceholder(paths...))
 }
 
-func bashLikeShell(paths ...string) string {
-	return fmt.Sprintf(`export PATH="%s:$PATH"`, strings.Join(paths, ":"))
+func (t *terminalCsh) PathsPlaceholder(paths ...string) string {
+	return strings.Join(paths, " ")
 }
 
-func cshShell(paths ...string) string {
-	return fmt.Sprintf(`set path = (%s $path)`, strings.Join(paths, " "))
+func bashLikeShell(paths string) string {
+	return fmt.Sprintf(`export PATH="%s:$PATH"`, paths)
 }
 
-func fishShell(paths ...string) string {
-	return fmt.Sprintf(`set -gx PATH %s $PATH`, strings.Join(paths, " "))
+func cshShell(paths string) string {
+	return fmt.Sprintf(`set path = (%s $path)`, paths)
+}
+
+func fishShell(paths string) string {
+	return fmt.Sprintf(`set -gx PATH %s $PATH`, paths)
 }
 
 func getSupportedTerminals() []terminal {
@@ -165,7 +195,7 @@ func addUserPathToTerminal(t terminal, home string, paths []string, force bool) 
 		return err
 	}
 	defer f.Close()
-	if _, err := f.Write([]byte(t.AddPathsShell(dps...))); err != nil {
+	if _, err := f.Write([]byte(fmt.Sprintf("\n%s\n", t.AddPathsShell(dps...)))); err != nil {
 		return err
 	}
 	return nil
