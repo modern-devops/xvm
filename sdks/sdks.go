@@ -48,12 +48,13 @@ type Tool struct {
 }
 
 type SdkInfo struct {
-	Name        string         `json:"name"`
-	Tools       []Tool         `json:"tools"`
-	BinPaths    []string       `json:"binPaths"`
-	Mirror      mirrors.Mirror `json:"mirror"`
-	PreRun      func() error   `json:"-"`
-	PostInstall func() error   `json:"-"`
+	Name        string                   `json:"name"`
+	Tools       []Tool                   `json:"tools"`
+	BinPaths    []string                 `json:"binPaths"`
+	Mirror      mirrors.Mirror           `json:"mirror"`
+	InjectEnvs  func(wp string) []string `json:"-"`
+	PreRun      func(wp string) error    `json:"-"`
+	PostInstall func(wp string) error    `json:"-"`
 }
 
 type SdkTool struct {
@@ -70,6 +71,13 @@ func (i *UserIsolatedInstaller) Install(sdkName string) (*SdkTool, error) {
 	version, err := st.Sdk.DetectVersion()
 	if err != nil {
 		return nil, err
+	}
+	if version == "" {
+		versions, err := st.Sdk.Info().Mirror.Versions()
+		if err != nil {
+			return nil, err
+		}
+		version = versions[0]
 	}
 	wp := filepath.Join(i.SdkStashPath, sdkName, version)
 	st.InstallPath = wp
@@ -91,7 +99,7 @@ func (i *UserIsolatedInstaller) Install(sdkName string) (*SdkTool, error) {
 		return nil, err
 	}
 	if pi := st.Sdk.Info().PostInstall; pi != nil {
-		return nil, pi()
+		return nil, pi(wp)
 	}
 	defer i.done(st.Sdk.Info(), df)
 	return st, nil
@@ -106,7 +114,18 @@ func (i *UserIsolatedInstaller) Link(sdkNames ...string) error {
 	return nil
 }
 
-func (i UserIsolatedInstaller) link(sdkName string) error {
+func (i *UserIsolatedInstaller) FindSdk(name string) (Sdk, error) {
+	names := make([]string, 0, len(i.Sdks))
+	for _, sdk := range i.Sdks {
+		names = append(names, sdk.Info().Name)
+		if sdk.Info().Name == name {
+			return sdk, nil
+		}
+	}
+	return nil, fmt.Errorf("unknown sdk: %s, allows %s", name, strings.Join(names, ","))
+}
+
+func (i *UserIsolatedInstaller) link(sdkName string) error {
 	st, err := i.findSdkTool(sdkName)
 	if err != nil {
 		return err
@@ -118,17 +137,6 @@ func (i UserIsolatedInstaller) link(sdkName string) error {
 		}
 	}
 	return nil
-}
-
-func (i *UserIsolatedInstaller) FindSdk(name string) (Sdk, error) {
-	names := make([]string, 0, len(i.Sdks))
-	for _, sdk := range i.Sdks {
-		names = append(names, sdk.Info().Name)
-		if sdk.Info().Name == name {
-			return sdk, nil
-		}
-	}
-	return nil, fmt.Errorf("unknown sdk: %s, allows %s", name, strings.Join(names, ","))
 }
 
 func (i *UserIsolatedInstaller) findSdkTool(name string) (*SdkTool, error) {

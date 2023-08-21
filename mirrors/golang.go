@@ -37,15 +37,7 @@ func (g *goMirror) GetURL(v string) (string, error) {
 	return g.getFullGoURL(fmt.Sprintf("go%s.%s.%s", v, os, pkg)), nil
 }
 
-func (g *goMirror) GetLatestURL() (string, error) {
-	latest, err := g.getGoVersions()
-	if err != nil {
-		return "", err
-	}
-	return g.GetURL(latest[0])
-}
-
-func (g *goMirror) getGoVersions() ([]string, error) {
+func (g *goMirror) Versions() ([]string, error) {
 	versionListURL := g.GoBaseMirror + "?mode=json&include=all"
 	rsp, err := http.Get(versionListURL)
 	if err != nil {

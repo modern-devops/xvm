@@ -32,6 +32,7 @@ func Gvm(home string) *gvm {
 }
 
 func (g *gvm) Info() *sdks.SdkInfo {
+	goPath := filepath.Join(g.home, "go")
 	return &sdks.SdkInfo{
 		Name: name,
 		Tools: []sdks.Tool{
@@ -40,8 +41,11 @@ func (g *gvm) Info() *sdks.SdkInfo {
 				Path: filepath.Join(bin, commandFile()),
 			},
 		},
-		BinPaths: []string{filepath.Join(g.home, "go", "bin")},
+		BinPaths: []string{filepath.Join(goPath, "bin")},
 		Mirror:   mirrors.Go(),
+		InjectEnvs: func(wp string) []string {
+			return []string{goroot + "=" + wp, gopath + "=" + goPath}
+		},
 	}
 }
 
@@ -77,7 +81,7 @@ func (g *gvm) DetectVersion() (string, error) {
 		}
 		return v, nil
 	}
-	return "latest", nil
+	return "", nil
 }
 
 func detectVersionFiles() ([]string, error) {
