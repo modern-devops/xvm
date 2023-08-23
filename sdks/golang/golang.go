@@ -4,19 +4,18 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/modern-devops/xvm/mirrors"
 	"github.com/modern-devops/xvm/sdks"
+	"github.com/modern-devops/xvm/tools"
 
 	"golang.org/x/mod/modfile"
 )
 
 const (
-	name          = "go"
+	golang        = "go"
 	bin           = "bin"
-	goExecName    = "go.exe"
 	goroot        = "GOROOT"
 	gopath        = "GOPATH"
 	goVersionFile = ".goversion"
@@ -34,11 +33,11 @@ func Gvm(home string) *gvm {
 func (g *gvm) Info() *sdks.SdkInfo {
 	goPath := filepath.Join(g.home, "go")
 	return &sdks.SdkInfo{
-		Name: name,
+		Name: golang,
 		Tools: []sdks.Tool{
 			{
-				Name: name,
-				Path: filepath.Join(bin, commandFile()),
+				Name: golang,
+				Path: filepath.Join(bin, tools.CommandFile(golang)),
 			},
 		},
 		BinPaths: []string{filepath.Join(goPath, "bin")},
@@ -52,7 +51,7 @@ func (g *gvm) Info() *sdks.SdkInfo {
 // DetectVersion try to detect the go version
 func (g *gvm) DetectVersion() (string, error) {
 	// 1. detect from .goversion
-	vfs, err := detectVersionFiles()
+	vfs, err := tools.DetectVersionFiles(goVersionFile)
 	if err != nil {
 		return "", err
 	}
@@ -84,24 +83,6 @@ func (g *gvm) DetectVersion() (string, error) {
 	return "", nil
 }
 
-func detectVersionFiles() ([]string, error) {
-	wd, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
-	var vfs []string
-	vfs = append(vfs, filepath.Join(wd, goVersionFile))
-	if rp := gitRootPath(wd); wd != rp && rp != "" {
-		vfs = append(vfs, filepath.Join(rp, goVersionFile))
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, err
-	}
-	vfs = append(vfs, filepath.Join(home, goVersionFile))
-	return vfs, nil
-}
-
 func detectGoMods() ([]string, error) {
 	wd, err := os.Getwd()
 	if err != nil {
@@ -109,7 +90,7 @@ func detectGoMods() ([]string, error) {
 	}
 	var gms []string
 	gms = append(gms, filepath.Join(wd, goModFile))
-	if rp := gitRootPath(wd); wd != rp {
+	if rp := tools.GitRootPath(wd); wd != rp {
 		gms = append(gms, filepath.Join(rp, goModFile))
 	}
 	return gms, nil
@@ -125,26 +106,4 @@ func getGoModuleVersion(gm string) (string, error) {
 		return "", fmt.Errorf("parse %s failed, %w", gm, err)
 	}
 	return f.Go.Version, nil
-}
-
-func commandFile() string {
-	if runtime.GOOS == "windows" {
-		return goExecName
-	}
-	return name
-}
-
-func gitRootPath(wd string) string {
-	cp := wd
-	for {
-		if _, err := os.Stat(filepath.Join(cp, ".git")); err == nil {
-			return cp
-		}
-		lp := filepath.Join(cp, "..")
-		if lp == cp {
-			break
-		}
-		cp = lp
-	}
-	return wd
 }

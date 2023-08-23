@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/modern-devops/xvm/tools/linker"
+	"github.com/modern-devops/xvm/sdks/node"
+	"github.com/rs/zerolog"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,14 +18,18 @@ import (
 	"github.com/modern-devops/xvm/sdks/golang"
 	"github.com/modern-devops/xvm/tools/binpath"
 
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"gopkg.in/ini.v1"
 )
 
 const app = "xvm"
 
+var version = "0.0.0"
+
 func main() {
 	setFlags()
+	setLogger()
 	handleError(commandRoot.Execute())
 }
 
@@ -34,6 +40,7 @@ var commandRoot = &cobra.Command{
 	Example:       "xvm add golang",
 	SilenceErrors: true,
 	SilenceUsage:  true,
+	Version:       fullVersion(),
 }
 
 var activateOpts = &struct {
@@ -44,16 +51,19 @@ var activateOpts = &struct {
 var subCommandActivate = &cobra.Command{
 	Use:           "activate [-a/--all] [--add_binpath] [sdks...]",
 	Short:         "Activate the specified or all sdks",
-	Example:       "Activate golang and node, and add binary path to the user's sdks.PATH: `xvm activate go node --add_path`",
+	Example:       "Activate golang and node, and add binary path to the user's env.PATH: `xvm activate go node --add_binpath`",
 	SilenceErrors: true,
 	SilenceUsage:  true,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if _, err := exec.LookPath(app); err != nil {
+			return fmt.Errorf("the %s command cannot be found, please make sure it is installed correctly", app)
+		}
 		installer, err := newInstaller()
 		if err != nil {
 			return err
 		}
 		sdkNames := supportedSdkNames(installer.Sdks)
-		unsupportedSdkNames := filterItems(sdkNames, args, exclude)
+		unsupportedSdkNames := filterSdkNames(sdkNames, args)
 		if len(unsupportedSdkNames) > 0 {
 			return fmt.Errorf("unsupported sdks: %s", strings.Join(unsupportedSdkNames, ","))
 		}
@@ -61,7 +71,7 @@ var subCommandActivate = &cobra.Command{
 		if err := cfg.load(); err != nil {
 			return err
 		}
-		unactivatedSdkNames := filterItems(cfg.Sdks, args, exclude)
+		unactivatedSdkNames := filterSdkNames(cfg.Sdks, args)
 		cfg.Sdks = append(cfg.Sdks, unactivatedSdkNames...)
 		var activateSdkNames []string
 		if activateOpts.All {
@@ -70,12 +80,14 @@ var subCommandActivate = &cobra.Command{
 		} else {
 			activateSdkNames = args
 		}
+		log.Info().Strs("sdks", activateSdkNames).Msg("Start activating ...")
 		if err := link(installer, activateSdkNames); err != nil {
 			return err
 		}
-		if err := addBinPath(); err != nil {
+		if err := addBinPath(installer, cfg); err != nil {
 			return err
 		}
+		log.Info().Msg("Succeeded to add all binary paths")
 		return cfg.save()
 	},
 }
@@ -106,23 +118,31 @@ var subCommandExec = &cobra.Command{
 
 var subCommandShow = &cobra.Command{
 	Use:           "show",
-	Short:         "Show detail for xvm",
-	SilenceErrors: true,
-	SilenceUsage:  true,
-}
-
-var subCommandShowBinPaths = &cobra.Command{
-	Use:           "binpaths",
-	Short:         "Show all binpaths managed by xvm",
+	Short:         "Show xvm details",
 	SilenceErrors: true,
 	SilenceUsage:  true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		binPaths, err := getBinPath()
+		installer, err := newInstaller()
 		if err != nil {
 			return err
 		}
-		_, err = os.Stdout.WriteString(binpath.PathsPlaceholder(binPaths...))
-		return err
+		cfg := &config{path: installer.ConfigPath}
+		if err := cfg.load(); err != nil {
+			return err
+		}
+
+		log.Info().Msgf("Version: %v", fullVersion())
+		log.Info().Msgf("Available Sdks: %v", supportedSdkNames(installer.Sdks))
+		log.Info().Msgf("Activated Sdks: %v", cfg.Sdks)
+		log.Info().Msgf("Workspace: %v", installer.RootPath)
+		log.Info().Msgf("Sdk Root Path: %s", installer.SdkStashPath)
+		log.Info().Msgf("Binary Paths: %v", installer.BinPath)
+
+		for _, sdk := range installer.Sdks {
+			log.Info().Msgf("Mirror for %s: %v", sdk.Info().Name, sdk.Info().Mirror.BaseURL())
+		}
+
+		return nil
 	},
 }
 
@@ -169,36 +189,28 @@ func newInstaller() (*sdks.UserIsolatedInstaller, error) {
 	if err != nil {
 		return nil, err
 	}
-	return sdks.NewUserIsolatedInstaller(home, []sdks.Sdk{golang.Gvm(home)}), nil
+	return sdks.NewUserIsolatedInstaller(home, []sdks.Sdk{golang.Gvm(home), node.Nvm(home)}), nil
 }
 
-func filterItems(litems []string, ritems []string, filter filter) []string {
+func filterSdkNames(supportedSdks []string, sdks []string) []string {
 	var items []string
-	for _, item := range ritems {
-		if filter(litems, item) {
+	for _, item := range sdks {
+		if !slices.Contains(supportedSdks, item) {
 			items = append(items, item)
 		}
 	}
 	return items
 }
 
-type filter func([]string, string) bool
-
-func exclude(items []string, item string) bool {
-	return !slices.Contains(items, item)
-}
-
-func addBinPath() error {
+func addBinPath(installer *sdks.UserIsolatedInstaller, cfg *config) error {
 	if !activateOpts.AddBinPath {
 		return nil
 	}
-	if runtime.GOOS != "windows" {
-		return binpath.AddUserPath("`xvm show binpaths`")
-	}
-	binPaths, err := getBinPath()
+	binPaths, err := getBinPath(installer, cfg)
 	if err != nil {
 		return err
 	}
+	log.Info().Msg("Try adding all binary paths to env.PATH")
 	return binpath.AddUserPath(binPaths...)
 }
 
@@ -206,31 +218,19 @@ func link(installer *sdks.UserIsolatedInstaller, sdkNames []string) error {
 	if err := installer.Link(sdkNames...); err != nil {
 		return err
 	}
-	if _, err := exec.LookPath(app); err == nil {
-		return nil
-	}
-	_, err := linker.New(app, installer.BinPath, os.Args[0], linker.OverrideAlways)
-	return err
+	return nil
 }
 
-func getBinPath() ([]string, error) {
-	installer, err := newInstaller()
-	if err != nil {
-		return nil, err
-	}
-	c := &config{
-		path: installer.ConfigPath,
-	}
-	if err := c.load(); err != nil {
-		return nil, err
-	}
+func getBinPath(installer *sdks.UserIsolatedInstaller, cfg *config) ([]string, error) {
 	var binPaths []string
+	log.Info().Strs(app, []string{installer.BinPath}).Msg("Found binpaths")
 	binPaths = append(binPaths, installer.BinPath)
-	for _, sn := range c.Sdks {
+	for _, sn := range cfg.Sdks {
 		sdk, err := installer.FindSdk(sn)
 		if err != nil {
 			continue
 		}
+		log.Info().Strs(sdk.Info().Name, sdk.Info().BinPaths).Msg("Collected binpaths")
 		binPaths = append(binPaths, sdk.Info().BinPaths...)
 	}
 	return binPaths, nil
@@ -248,6 +248,7 @@ func handleError(err error) {
 	if err == nil {
 		return
 	}
+	log.Error().Msg(err.Error())
 	var ee *exec.ExitError
 	if ok := errors.As(err, &ee); ok {
 		os.Exit(ee.ExitCode())
@@ -257,8 +258,27 @@ func handleError(err error) {
 }
 
 func setFlags() {
-	commandRoot.AddCommand(subCommandActivate, subCommandShow, subCommandExec)
-	subCommandShow.AddCommand(subCommandShowBinPaths)
+	commandRoot.AddCommand(subCommandActivate, subCommandExec, subCommandShow)
 	subCommandActivate.Flags().BoolVar(&activateOpts.AddBinPath, "add_binpath", false, "Add xvm's binary path to the user's sdks.PATH, On a unix like system, all identified terminal rc files, such as ~/.bashrc and ~.zshrc, will be modified.")
 	subCommandActivate.Flags().BoolVarP(&activateOpts.All, "all", "a", false, "Activate all supported sdks, execute `xvm list` to see detail")
+}
+
+func setLogger() {
+	level := zerolog.InfoLevel
+	if assertEnvTrue("DEBUG") {
+		level = zerolog.DebugLevel
+	}
+	var out io.Writer = os.Stdout
+	if assertEnvTrue("SILENT") {
+		out = io.Discard
+	}
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: out}).Level(level)
+}
+
+func assertEnvTrue(env string) bool {
+	return strings.ToLower(os.Getenv(env)) == "true"
+}
+
+func fullVersion() string {
+	return fmt.Sprintf("%s (%s.%s)", version, runtime.GOOS, runtime.GOARCH)
 }

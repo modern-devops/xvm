@@ -3,7 +3,6 @@ package sdks
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -14,9 +13,8 @@ import (
 	"github.com/modern-devops/xvm/tools/linker"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/rs/zerolog/log"
 )
-
-var logger = log.New(os.Stdout, "", log.LstdFlags)
 
 type UserIsolatedInstaller struct {
 	RootPath     string
@@ -79,14 +77,14 @@ func (i *UserIsolatedInstaller) Install(sdkName string) (*SdkTool, error) {
 		}
 		version = versions[0]
 	}
-	wp := filepath.Join(i.SdkStashPath, sdkName, version)
+	wp := filepath.Join(i.SdkStashPath, st.Sdk.Info().Name, version)
 	st.InstallPath = wp
 	df := filepath.Join(wp, ".done")
 	if _, err := os.Stat(df); err == nil {
 		return st, nil
 	}
-	if err := os.MkdirAll(wp, 0755); err != nil {
-		return nil, fmt.Errorf("failed to make dir: [%s], Please check: %w", wp, err)
+	if err := os.RemoveAll(wp); err != nil {
+		return nil, fmt.Errorf("failed to remove dir: [%s], Please check: %w", wp, err)
 	}
 	url, err := st.Sdk.Info().Mirror.GetURL(version)
 	if err != nil {
@@ -99,7 +97,9 @@ func (i *UserIsolatedInstaller) Install(sdkName string) (*SdkTool, error) {
 		return nil, err
 	}
 	if pi := st.Sdk.Info().PostInstall; pi != nil {
-		return nil, pi(wp)
+		if err := pi(wp); err != nil {
+			return nil, err
+		}
 	}
 	defer i.done(st.Sdk.Info(), df)
 	return st, nil
@@ -131,6 +131,8 @@ func (i *UserIsolatedInstaller) link(sdkName string) error {
 		return err
 	}
 	for _, tool := range st.Sdk.Info().Tools {
+		log.Info().Str("command", filepath.Join(i.BinPath, tool.Name)).Msg("Linking ...")
+		log.Info().Msgf("If you want to invoke the [%s] command quickly, add [%s] to env.PATH", tool.Name, i.BinPath)
 		c := fmt.Sprintf("xvm exec %s", tool.Name)
 		if _, err := linker.New(tool.Name, i.BinPath, c, linker.OverrideAlways); err != nil {
 			return fmt.Errorf("unable to link command: %s, Please check: %w", tool.Name, err)
@@ -161,12 +163,12 @@ func (i *UserIsolatedInstaller) downloadAndExtracting(url string, path string) e
 	defer func() {
 		_ = os.RemoveAll(temp)
 	}()
-	logger.Printf("Downloading %s ...", url)
+	log.Info().Msgf("Downloading %s ...", url)
 	filename, err := tools.Download(url, temp)
 	if err != nil {
 		return fmt.Errorf("failed to download: %w", err)
 	}
-	logger.Printf("Extracting to %s ...", path)
+	log.Info().Msgf("Extracting to %s ...", path)
 	err = tools.Unarchive(filename, path)
 	if err != nil {
 		return fmt.Errorf("failed to extracting: %w", err)

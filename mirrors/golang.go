@@ -5,36 +5,28 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"runtime"
+
+	"github.com/modern-devops/xvm/tools"
 )
 
 type goMirror struct {
 	GoBaseMirror string `json:"Base"`
 }
 
-const (
-	zip = "zip"
-	tar = "tar.gz"
-)
-
 func Go() Mirror {
-	mirror := "https://go.dev/dl/"
-	if m := os.Getenv("XVM_GO_MIRROR"); m != "" {
-		mirror = m
-	}
 	return &goMirror{
-		GoBaseMirror: mirror,
+		GoBaseMirror: overwriteMirror("go", "https://go.dev/dl/"),
 	}
 }
 
 func (g *goMirror) GetURL(v string) (string, error) {
 	pkg := tar
-	if runtime.GOOS == "windows" {
+	if tools.IsWindows() {
 		pkg = zip
 	}
 	os := fmt.Sprintf("%s-%s", runtime.GOOS, runtime.GOARCH)
-	return g.getFullGoURL(fmt.Sprintf("go%s.%s.%s", v, os, pkg)), nil
+	return g.getFullGoURL(fmt.Sprintf("/go%s.%s.%s", v, os, pkg)), nil
 }
 
 func (g *goMirror) Versions() ([]string, error) {
@@ -61,6 +53,10 @@ func (g *goMirror) Versions() ([]string, error) {
 		}
 	}
 	return versions, nil
+}
+
+func (g *goMirror) BaseURL() string {
+	return g.GoBaseMirror
 }
 
 // getFullGoURL 获取go完整的下载路径
