@@ -5,13 +5,13 @@ xvm is a tool that provides version management for multiple sdks, such as golang
 
 ### Activate SDK
 
-1. Activate Golang/Node SDK
+Activate Golang/Node SDK:
 
 ```shell
 $ xvm activate go node --add_binpath
 ```
 
-2. Open a new terminal
+Open a new terminal:
 
 ```shell
 # Uses the latest version of the go
