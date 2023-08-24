@@ -11,8 +11,6 @@ const (
 	tar = "tar.gz"
 )
 
-const latest = "latest"
-
 type Mirror interface {
 	GetURL(v string) (string, error)
 	Versions() ([]string, error)

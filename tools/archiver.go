@@ -7,35 +7,24 @@ import (
 	"github.com/mholt/archiver/v3"
 )
 
-var errorUnsupported = errors.New("unsupported archiver")
+var ErrUnsupported = errors.New("unsupported archiver")
 
-// Unarchive 解包
-func Unarchive(filename, toPath string) error {
-	return archive(filename, toPath, 1)
-}
-
-// UnarchiveRoot 解压根目录下的所有文件
-func UnarchiveRoot(filename, toPath string) error {
-	return archive(filename, toPath, 0)
-}
-
-func archive(filename, toPath string, stripComponent int64) error {
+func Unarchive(filename, path string) error {
 	iua, err := archiver.ByExtension(filename)
 	if err != nil {
-		return errorUnsupported
+		return ErrUnsupported
 	}
-	patchArchiverSettings(iua, stripComponent)
+	applyArchiverSettings(iua, 1)
 	u, ok := iua.(archiver.Unarchiver)
 	if ok {
-		return u.Unarchive(filename, toPath)
+		return u.Unarchive(filename, path)
 	}
-	return errorUnsupported
+	return ErrUnsupported
 }
 
-func patchArchiverSettings(iua interface{}, stripComponent int64) {
+func applyArchiverSettings(iua interface{}, stripComponent int64) {
 	rua := reflect.ValueOf(iua).Elem()
-	v := rua.FieldByName("StripComponents")
-	if v.CanSet() {
+	if v := rua.FieldByName("StripComponents"); v.CanSet() {
 		v.SetInt(stripComponent)
 	}
 }

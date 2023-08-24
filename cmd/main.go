@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -80,7 +79,7 @@ var subCommandActivate = &cobra.Command{
 		} else {
 			activateSdkNames = args
 		}
-		log.Info().Strs("sdks", activateSdkNames).Msg("Start activating ...")
+		log.Info().Msgf("Start activating %s ...", activateSdkNames)
 		if err := link(installer, activateSdkNames); err != nil {
 			return err
 		}
@@ -112,7 +111,7 @@ var subCommandExec = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return execSdk(st, args[1:])
+		return st.Run(context.Background(), args[1:]...)
 	},
 }
 
@@ -144,23 +143,6 @@ var subCommandShow = &cobra.Command{
 
 		return nil
 	},
-}
-
-func execSdk(st *sdks.SdkTool, args []string) error {
-	if preRun := st.Sdk.Info().PreRun; preRun != nil {
-		if err := preRun(st.InstallPath); err != nil {
-			return err
-		}
-	}
-	tp := filepath.Join(st.InstallPath, st.Tool.Path)
-	tc := exec.CommandContext(context.Background(), tp, args...)
-	if ie := st.Sdk.Info().InjectEnvs; ie != nil {
-		tc.Env = append(os.Environ(), st.Sdk.Info().InjectEnvs(st.InstallPath)...)
-	}
-	tc.Stdin = os.Stdin
-	tc.Stdout = os.Stdout
-	tc.Stderr = os.Stderr
-	return tc.Run()
 }
 
 type config struct {
@@ -226,7 +208,7 @@ func getBinPath(installer *sdks.UserIsolatedInstaller, cfg *config) ([]string, e
 	log.Info().Strs(app, []string{installer.BinPath}).Msg("Found binpaths")
 	binPaths = append(binPaths, installer.BinPath)
 	for _, sn := range cfg.Sdks {
-		sdk, err := installer.FindSdk(sn)
+		sdk, err := installer.GetSdk(sn)
 		if err != nil {
 			continue
 		}

@@ -59,7 +59,6 @@ func (g *goMirror) BaseURL() string {
 	return g.GoBaseMirror
 }
 
-// getFullGoURL 获取go完整的下载路径
 func (g *goMirror) getFullGoURL(path string) string {
 	return g.GoBaseMirror + path
 }

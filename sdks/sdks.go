@@ -1,11 +1,16 @@
 package sdks
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"golang.org/x/mod/semver"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/modern-devops/xvm/mirrors"
@@ -36,13 +41,8 @@ func NewUserIsolatedInstaller(home string, sdks []Sdk) *UserIsolatedInstaller {
 }
 
 type Sdk interface {
-	DetectVersion() (string, error)
+	Version() (string, error)
 	Info() *SdkInfo
-}
-
-type Tool struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
 }
 
 type SdkInfo struct {
@@ -50,71 +50,71 @@ type SdkInfo struct {
 	Tools       []Tool                   `json:"tools"`
 	BinPaths    []string                 `json:"binPaths"`
 	Mirror      mirrors.Mirror           `json:"mirror"`
-	InjectEnvs  func(wp string) []string `json:"-"`
+	WithEnvs    func(wp string) []string `json:"-"`
 	PreRun      func(wp string) error    `json:"-"`
 	PostInstall func(wp string) error    `json:"-"`
 }
 
 type SdkTool struct {
-	Sdk         Sdk
-	Tool        Tool
-	InstallPath string
+	Sdk  Sdk
+	Tool Tool
+	Root string
 }
 
-func (i *UserIsolatedInstaller) Install(sdkName string) (*SdkTool, error) {
-	st, err := i.findSdkTool(sdkName)
+type Tool struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+func (i *UserIsolatedInstaller) Install(name string) (*SdkTool, error) {
+	st, err := i.getSdkTool(name)
 	if err != nil {
 		return nil, err
 	}
-	version, err := st.Sdk.DetectVersion()
+	version, err := st.GetVersion()
 	if err != nil {
 		return nil, err
 	}
-	if version == "" {
-		versions, err := st.Sdk.Info().Mirror.Versions()
-		if err != nil {
-			return nil, err
-		}
-		version = versions[0]
-	}
-	wp := filepath.Join(i.SdkStashPath, st.Sdk.Info().Name, version)
-	st.InstallPath = wp
+	wp := filepath.Join(i.SdkStashPath, st.Info().Name, version)
+	st.Root = wp
 	df := filepath.Join(wp, ".done")
 	if _, err := os.Stat(df); err == nil {
 		return st, nil
 	}
+	log.Info().Msgf("Installing %s@%s ...", st.Info().Name, version)
 	if err := os.RemoveAll(wp); err != nil {
 		return nil, fmt.Errorf("failed to remove dir: [%s], Please check: %w", wp, err)
 	}
-	url, err := st.Sdk.Info().Mirror.GetURL(version)
+	url, err := st.Info().Mirror.GetURL(version)
 	if err != nil {
 		return nil, err
 	}
+	log.Info().Msgf("Detecting %s ...", url)
 	if err := detect(url); err != nil {
 		return nil, err
 	}
 	if err := i.downloadAndExtracting(url, wp); err != nil {
 		return nil, err
 	}
-	if pi := st.Sdk.Info().PostInstall; pi != nil {
+	if pi := st.Info().PostInstall; pi != nil {
+		log.Info().Msgf("Configuring ...")
 		if err := pi(wp); err != nil {
 			return nil, err
 		}
 	}
-	defer i.done(st.Sdk.Info(), df)
-	return st, nil
+	return st, i.done(st.Info(), df)
 }
 
-func (i *UserIsolatedInstaller) Link(sdkNames ...string) error {
-	for _, sdk := range sdkNames {
-		if err := i.link(sdk); err != nil {
+func (i *UserIsolatedInstaller) Link(names ...string) error {
+	for _, name := range names {
+		if err := i.link(name); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (i *UserIsolatedInstaller) FindSdk(name string) (Sdk, error) {
+func (i *UserIsolatedInstaller) GetSdk(name string) (Sdk, error) {
 	names := make([]string, 0, len(i.Sdks))
 	for _, sdk := range i.Sdks {
 		names = append(names, sdk.Info().Name)
@@ -125,34 +125,91 @@ func (i *UserIsolatedInstaller) FindSdk(name string) (Sdk, error) {
 	return nil, fmt.Errorf("unknown sdk: %s, allows %s", name, strings.Join(names, ","))
 }
 
-func (i *UserIsolatedInstaller) link(sdkName string) error {
-	st, err := i.findSdkTool(sdkName)
+func (s *SdkTool) GetVersion() (string, error) {
+	version, err := s.Sdk.Version()
+	if err != nil {
+		return "", err
+	}
+	if version != "" {
+		return version, nil
+	}
+
+	// uses latest version
+	versions, err := s.Sdk.Info().Mirror.Versions()
+	if err != nil {
+		return "", err
+	}
+	if len(versions) == 0 {
+		return "", errors.New("no version is available")
+	}
+	return slices.MaxFunc(versions, semver.Compare), nil
+}
+
+func (s *SdkTool) Info() *SdkInfo {
+	return s.Sdk.Info()
+}
+
+func (s *SdkTool) Run(ctx context.Context, args ...string) error {
+	if preRun := s.Info().PreRun; preRun != nil {
+		if err := preRun(s.Root); err != nil {
+			return err
+		}
+	}
+	tp := filepath.Join(s.Root, s.Tool.Path)
+	tc := exec.CommandContext(ctx, tp, args...)
+	if ie := s.Sdk.Info().WithEnvs; ie != nil {
+		tc.Env = append(os.Environ(), s.Info().WithEnvs(s.Root)...)
+	}
+	tc.Stdin = os.Stdin
+	tc.Stdout = os.Stdout
+	tc.Stderr = os.Stderr
+	return tc.Run()
+}
+
+func (i *UserIsolatedInstaller) link(name string) error {
+	st, err := i.getSdkTool(name)
 	if err != nil {
 		return err
 	}
-	for _, tool := range st.Sdk.Info().Tools {
+	for _, tool := range st.Info().Tools {
 		log.Info().Str("command", filepath.Join(i.BinPath, tool.Name)).Msg("Linking ...")
-		log.Info().Msgf("If you want to invoke the [%s] command quickly, add [%s] to env.PATH", tool.Name, i.BinPath)
-		c := fmt.Sprintf("xvm exec %s", tool.Name)
-		if _, err := linker.New(tool.Name, i.BinPath, c, linker.OverrideAlways); err != nil {
+		command := fmt.Sprintf("xvm exec %s", tool.Name)
+		if _, err := linker.New(tool.Name, i.BinPath, command, linker.OverrideAlways); err != nil {
 			return fmt.Errorf("unable to link command: %s, Please check: %w", tool.Name, err)
 		}
+		log.Info().Msgf("The %s command has been linked, "+
+			"add [%s] to env.PATH to enable it, ignore if you used the --add_binpath flag", tool.Name, i.BinPath)
 	}
 	return nil
 }
 
-func (i *UserIsolatedInstaller) findSdkTool(name string) (*SdkTool, error) {
-	names := make([]string, 0, len(i.Sdks))
+func (i *UserIsolatedInstaller) getSdkTool(name string) (*SdkTool, error) {
+	var names []string
 	for _, sdk := range i.Sdks {
-		for _, tool := range sdk.Info().Tools {
-			if tool.Name != name {
-				names = append(names, tool.Name)
-				continue
-			}
-			return &SdkTool{Sdk: sdk, Tool: tool}, nil
+		if st := findSdkTool(sdk, name); st != nil {
+			return st, nil
 		}
+		names = append(names, sdkToolNames(sdk)...)
 	}
 	return nil, fmt.Errorf("unknown sdk: %s, allows %s", name, strings.Join(names, ","))
+}
+
+func findSdkTool(sdk Sdk, name string) *SdkTool {
+	for _, tool := range sdk.Info().Tools {
+		if tool.Name != name {
+			continue
+		}
+		return &SdkTool{Sdk: sdk, Tool: tool}
+	}
+	return nil
+}
+
+func sdkToolNames(sdk Sdk) []string {
+	names := make([]string, 0, len(sdk.Info().Tools))
+	for _, tool := range sdk.Info().Tools {
+		names = append(names, tool.Name)
+	}
+	return names
 }
 
 func (i *UserIsolatedInstaller) downloadAndExtracting(url string, path string) error {

@@ -3,14 +3,15 @@ package mirrors
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/modern-devops/xvm/tools"
 	"io"
 	"net/http"
 	"runtime"
+
+	"github.com/modern-devops/xvm/tools"
 )
 
 type nodeMirror struct {
-	NodeBaseMirror string `json:"Mirror"`
+	NodeBaseMirror string `json:"Base"`
 }
 
 func Node() Mirror {

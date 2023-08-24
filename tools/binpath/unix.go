@@ -1,5 +1,4 @@
 //go:build !windows
-// +build !windows
 
 package binpath
 
@@ -22,28 +21,14 @@ func AddUserPath(paths ...string) error {
 	if err := addUserPathToTerminal(ct, home, paths, true); err != nil {
 		return err
 	}
-	// add on zsh but uses on bash
-	for _, t := range getSupportedTerminals() {
-		if t == ct {
-			continue
-		}
-		if err := addUserPathToTerminal(t, home, paths, false); err != nil {
-			continue
-		}
-	}
+	tryAddSupportedTerminals(ct, home, paths)
 	return nil
-}
-
-func PathsPlaceholder(paths ...string) string {
-	ct := getCurrentTerminal()
-	return ct.PathsPlaceholder(paths...)
 }
 
 type terminal interface {
 	Name() string
 	Rc() string
 	AddPathsShell(paths ...string) string
-	PathsPlaceholder(paths ...string) string
 }
 
 type terminalBash struct{}
@@ -60,11 +45,7 @@ func (t *terminalBash) Rc() string {
 }
 
 func (t *terminalBash) AddPathsShell(paths ...string) string {
-	return bashLikeShell(t.PathsPlaceholder(paths...))
-}
-
-func (t *terminalBash) PathsPlaceholder(paths ...string) string {
-	return strings.Join(paths, ":")
+	return bashLikeShell(strings.Join(paths, ":"))
 }
 
 type terminalSh struct{}
@@ -78,11 +59,7 @@ func (t *terminalSh) Rc() string {
 }
 
 func (t *terminalSh) AddPathsShell(paths ...string) string {
-	return bashLikeShell(t.PathsPlaceholder(paths...))
-}
-
-func (t *terminalSh) PathsPlaceholder(paths ...string) string {
-	return strings.Join(paths, ":")
+	return bashLikeShell(strings.Join(paths, ":"))
 }
 
 type terminalZsh struct{}
@@ -96,11 +73,7 @@ func (t *terminalZsh) Rc() string {
 }
 
 func (t *terminalZsh) AddPathsShell(paths ...string) string {
-	return bashLikeShell(t.PathsPlaceholder(paths...))
-}
-
-func (t *terminalZsh) PathsPlaceholder(paths ...string) string {
-	return strings.Join(paths, ":")
+	return bashLikeShell(strings.Join(paths, ":"))
 }
 
 type terminalFish struct{}
@@ -114,11 +87,7 @@ func (t *terminalFish) Rc() string {
 }
 
 func (t *terminalFish) AddPathsShell(paths ...string) string {
-	return fishShell(t.PathsPlaceholder(paths...))
-}
-
-func (t *terminalFish) PathsPlaceholder(paths ...string) string {
-	return strings.Join(paths, " ")
+	return fishShell(strings.Join(paths, " "))
 }
 
 type terminalZcsh struct{}
@@ -132,11 +101,7 @@ func (t *terminalZcsh) Rc() string {
 }
 
 func (t *terminalZcsh) AddPathsShell(paths ...string) string {
-	return cshShell(t.PathsPlaceholder(paths...))
-}
-
-func (t *terminalZcsh) PathsPlaceholder(paths ...string) string {
-	return strings.Join(paths, " ")
+	return cshShell(strings.Join(paths, " "))
 }
 
 type terminalCsh struct{}
@@ -150,11 +115,7 @@ func (t *terminalCsh) Rc() string {
 }
 
 func (t *terminalCsh) AddPathsShell(paths ...string) string {
-	return cshShell(t.PathsPlaceholder(paths...))
-}
-
-func (t *terminalCsh) PathsPlaceholder(paths ...string) string {
-	return strings.Join(paths, " ")
+	return cshShell(strings.Join(paths, " "))
 }
 
 func bashLikeShell(paths string) string {
@@ -229,4 +190,16 @@ func getCurrentTerminal() terminal {
 		}
 	}
 	return ts[0]
+}
+
+func tryAddSupportedTerminals(current terminal, home string, paths []string) {
+	// Note: added on zsh but uses on bash
+	for _, t := range getSupportedTerminals() {
+		if t == current {
+			continue
+		}
+		if err := addUserPathToTerminal(t, home, paths, false); err != nil {
+			continue
+		}
+	}
 }

@@ -42,14 +42,14 @@ func (g *gvm) Info() *sdks.SdkInfo {
 		},
 		BinPaths: []string{filepath.Join(goPath, "bin")},
 		Mirror:   mirrors.Go(),
-		InjectEnvs: func(wp string) []string {
+		WithEnvs: func(wp string) []string {
 			return []string{goroot + "=" + wp, gopath + "=" + goPath}
 		},
 	}
 }
 
-// DetectVersion try to detect the go version
-func (g *gvm) DetectVersion() (string, error) {
+// Version try to detect the go version
+func (g *gvm) Version() (string, error) {
 	// 1. detect from .goversion
 	vfs, err := tools.DetectVersionFiles(goVersionFile)
 	if err != nil {

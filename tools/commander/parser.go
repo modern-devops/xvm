@@ -1,18 +1,13 @@
 //go:build !windows
-// +build !windows
 
 package commander
 
-// state 标记命令解析状态
 type state int
 
 const (
 	_ state = iota
-	// startState 开始状态
 	startState
-	// quotesState 括号匹配态
 	quotesState
-	// argsState 参数匹配状态
 	argsState
 )
 
@@ -29,9 +24,6 @@ type pipe struct {
 	do   func(c rune, attr *parseAttr)
 }
 
-// 处理流
-// 解析过程中将按这个流的顺序从上往下询问，谁先应答就由谁抢占
-// 调用test函数询问是否匹配，调用do函数执行相应的处理
 var pipes = []pipe{
 	{
 		test: func(_ rune, attr *parseAttr) bool {

@@ -3,20 +3,18 @@ package tools
 import (
 	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/go-resty/resty/v2"
 )
 
 const (
-	manifestAPI  = "https://raw.githubusercontent.com/%s/%s/%s/versions-manifest.json"
-	mainRef      = "main"
-	notFoundCode = 404
+	manifestAPI      = "https://raw.githubusercontent.com/%s/%s/%s/versions-manifest.json"
+	defaultReference = "main"
 )
 
-// ErrorManifestNotFound 未找到清单文件
-var ErrorManifestNotFound = errors.New("manifest not found")
+var ErrManifestNotFound = errors.New("manifest not found")
 
-// Manifest 清单
 type Manifest struct {
 	Version    string         `json:"version"`
 	Stable     bool           `json:"stable"`
@@ -31,9 +29,8 @@ type manifestFile struct {
 	DownloadURL string `json:"download_url"`
 }
 
-// GetManifestFromRepo 获取资源仓库主干分支的版本清单
 func GetManifestFromRepo(owner, repo string) ([]Manifest, error) {
-	return getManifest(owner, repo, mainRef)
+	return getManifest(owner, repo, defaultReference)
 }
 
 func getManifest(owner, repo string, ref string) ([]Manifest, error) {
@@ -44,14 +41,14 @@ func getManifest(owner, repo string, ref string) ([]Manifest, error) {
 		SetResult(&m).
 		Get(url)
 	if err != nil {
-		return nil, fmt.Errorf("获取清单列表失败，请检查网络：%s", err)
+		return nil, fmt.Errorf("faile to request manifest: %w", err)
 	}
 	if rsp.IsSuccess() {
 		return m, nil
 	}
 	code := rsp.StatusCode()
-	if code == notFoundCode {
-		return nil, ErrorManifestNotFound
+	if code == http.StatusNotFound {
+		return nil, ErrManifestNotFound
 	}
-	return nil, fmt.Errorf("请求失败，响应码：%d, 响应内容：%s", code, rsp.String())
+	return nil, fmt.Errorf("fail to get manifest, status: %d, resp: %s", code, rsp.String())
 }
