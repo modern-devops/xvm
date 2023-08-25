@@ -3,12 +3,13 @@ package mirrors
 import (
 	"encoding/json"
 	"fmt"
-	"golang.org/x/mod/semver"
 	"io"
 	"net/http"
 	"runtime"
 
 	"github.com/modern-devops/xvm/tools"
+
+	"golang.org/x/mod/semver"
 )
 
 type nodeMirror struct {
@@ -60,7 +61,6 @@ func (n *nodeMirror) BaseURL() string {
 	return n.NodeBaseMirror
 }
 
-// getFullGoURL 获取go完整的下载路径
 func (n *nodeMirror) getFullNodeURL(path string) string {
 	return n.NodeBaseMirror + path
 }

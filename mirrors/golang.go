@@ -45,11 +45,9 @@ func (g *goMirror) Versions() ([]string, error) {
 		return nil, err
 	}
 	versions := make([]string, 0, len(items))
-	for _, item := range items {
-		for k, v := range item {
-			if k == "version" {
-				versions = append(versions, v.(string)[2:])
-			}
+	for _, metadata := range items {
+		if ver := findVersion(metadata); ver != "" {
+			versions = append(versions, ver)
 		}
 	}
 	return versions, nil
@@ -61,4 +59,13 @@ func (g *goMirror) BaseURL() string {
 
 func (g *goMirror) getFullGoURL(path string) string {
 	return g.GoBaseMirror + path
+}
+
+func findVersion(metadata map[string]interface{}) string {
+	for k, v := range metadata {
+		if k == "version" {
+			return v.(string)[2:]
+		}
+	}
+	return ""
 }

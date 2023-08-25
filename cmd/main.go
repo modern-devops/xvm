@@ -4,9 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/modern-devops/xvm/sdks/golang"
-	"github.com/modern-devops/xvm/sdks/node"
-	"github.com/rs/zerolog"
 	"io"
 	"os"
 	"os/exec"
@@ -15,8 +12,11 @@ import (
 	"strings"
 
 	"github.com/modern-devops/xvm/sdks"
+	"github.com/modern-devops/xvm/sdks/golang"
+	"github.com/modern-devops/xvm/sdks/node"
 	"github.com/modern-devops/xvm/tools/binpath"
 
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"gopkg.in/ini.v1"
