@@ -16,7 +16,7 @@ type goMirror struct {
 
 func Go() Mirror {
 	return &goMirror{
-		GoBaseMirror: overwriteMirror("go", "https://go.dev/dl/"),
+		GoBaseMirror: overwriteMirror("go", "https://go.dev/dl"),
 	}
 }
 

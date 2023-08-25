@@ -128,6 +128,9 @@ func (i *UserIsolatedInstaller) GetSdk(name string) (Sdk, error) {
 }
 
 func (s *SdkTool) GetVersion() (string, error) {
+	if v := os.Getenv(fmt.Sprintf("XVM_%s_VERSION", strings.ToUpper(s.Sdk.Info().Name))); v != "" {
+		return strings.TrimSuffix(v, "v"), nil
+	}
 	version, err := s.Sdk.Version()
 	if err != nil {
 		return "", err
