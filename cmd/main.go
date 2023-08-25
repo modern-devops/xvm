@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/modern-devops/xvm/sdks/golang"
 	"github.com/modern-devops/xvm/sdks/node"
 	"github.com/rs/zerolog"
 	"io"
@@ -14,7 +15,6 @@ import (
 	"strings"
 
 	"github.com/modern-devops/xvm/sdks"
-	"github.com/modern-devops/xvm/sdks/golang"
 	"github.com/modern-devops/xvm/tools/binpath"
 
 	"github.com/rs/zerolog/log"
@@ -24,7 +24,7 @@ import (
 
 const app = "xvm"
 
-var version = "0.0.0"
+var version = "v0.0.0"
 
 func main() {
 	setFlags()
@@ -111,6 +111,8 @@ var subCommandExec = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		// disable log when start to run
+		log.Logger = log.Output(io.Discard)
 		return st.Run(context.Background(), args[1:]...)
 	},
 }
@@ -171,7 +173,9 @@ func newInstaller() (*sdks.UserIsolatedInstaller, error) {
 	if err != nil {
 		return nil, err
 	}
-	return sdks.NewUserIsolatedInstaller(home, []sdks.Sdk{golang.Gvm(home), node.Nvm(home)}), nil
+	installer := sdks.NewUserIsolatedInstaller(home, nil)
+	installer.Sdks = []sdks.Sdk{golang.Gvm(home), node.Nvm(installer.DataPath)}
+	return installer, nil
 }
 
 func filterSdkNames(supportedSdks []string, sdks []string) []string {
@@ -204,9 +208,8 @@ func link(installer *sdks.UserIsolatedInstaller, sdkNames []string) error {
 }
 
 func getBinPath(installer *sdks.UserIsolatedInstaller, cfg *config) ([]string, error) {
-	var binPaths []string
+	binPaths := []string{installer.BinPath}
 	log.Info().Strs(app, []string{installer.BinPath}).Msg("Found binpaths")
-	binPaths = append(binPaths, installer.BinPath)
 	for _, sn := range cfg.Sdks {
 		sdk, err := installer.GetSdk(sn)
 		if err != nil {

@@ -1,17 +1,13 @@
 package node
 
 import (
-	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/modern-devops/xvm/mirrors"
 	"github.com/modern-devops/xvm/sdks"
 	"github.com/modern-devops/xvm/tools"
-
-	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -45,13 +41,23 @@ func (n *nvm) Info() *sdks.SdkInfo {
 		},
 		BinPaths: []string{npmPackagesBinPath(prefix)},
 		Mirror:   mirrors.Node(),
+		WithEnvs: func(wp string) []string {
+			envPrefix := "PREFIX"
+			if os.Getenv(envPrefix) == "" {
+				return []string{envPrefix + "=" + prefix}
+			}
+			return nil
+		},
 		PostInstall: func(wp string) error {
-			return n.configNpm(wp, prefix)
+			if tools.IsWindows() {
+				return os.Symlink(filepath.Join(wp, nodeCommandFile()), filepath.Join(prefix, nodeCommandFile()))
+			}
+			return nil
 		},
 	}
 }
 
-// DetectVersion try to detect the node version
+// Version try to detect the node version
 func (n *nvm) Version() (string, error) {
 	vfs, err := tools.DetectVersionFiles(".nodeversion")
 	if err != nil {
@@ -91,25 +97,9 @@ func npmCommandFile() string {
 	return filepath.Join(bin, npm)
 }
 
-func (n *nvm) configNpm(wp string, prefix string) error {
-	if err := os.MkdirAll(prefix, 0755); err != nil {
-		return fmt.Errorf("failed to make directry: %s, %w", prefix, err)
+func builtinNpmRC(wp string) string {
+	if tools.IsWindows() {
+		return filepath.Join(wp, "node_modules", "npm", ".npmrc")
 	}
-	nodePath := filepath.Join(wp, nodeCommandFile())
-	npmJs := filepath.Join(wp, "node_modules", "npm", "bin", "npm-cli.js")
-	out, err := exec.Command(nodePath, npmJs, "config", "set", "prefix", prefix).Output()
-	if err != nil {
-		log.Error().Msg(string(out))
-		return fmt.Errorf("failed to set prefix, %w", err)
-	}
-	npmCache := filepath.Join(n.home, node, "npm-cache")
-	if err := os.MkdirAll(npmCache, 0755); err != nil {
-		return fmt.Errorf("failed to make directry: %s, %w", npmCache, err)
-	}
-	out, err = exec.Command(nodePath, npmJs, "config", "set", "cache", npmCache).Output()
-	if err != nil {
-		log.Error().Msg(string(out))
-		return fmt.Errorf("failed to set cache, %w", err)
-	}
-	return nil
+	return filepath.Join(wp, "lib", "node_modules", "npm", ".npmrc")
 }

@@ -3,6 +3,7 @@ package mirrors
 import (
 	"encoding/json"
 	"fmt"
+	"golang.org/x/mod/semver"
 	"io"
 	"net/http"
 	"runtime"
@@ -21,11 +22,12 @@ func Node() Mirror {
 }
 
 func (n *nodeMirror) GetURL(v string) (string, error) {
-	arch := n.arch()
+	arch := n.arch(v)
 	if arch == "" {
-		return "", fmt.Errorf("unsupported arch: %s, You can access %s to confirm if your arch is supported", runtime.GOARCH, n.NodeBaseMirror)
+		return "", fmt.Errorf("unsupported arch: %s, "+
+			"You can access %s to confirm if your arch is supported", runtime.GOARCH, n.NodeBaseMirror)
 	}
-	return fmt.Sprintf("%s/%s/node-%s-%s-%s.%s", n.NodeBaseMirror, v, v, n.os(), n.arch(), n.ext()), nil
+	return fmt.Sprintf("%s/%s/node-%s-%s-%s.%s", n.NodeBaseMirror, v, v, n.os(), n.arch(v), n.ext()), nil
 }
 
 func (n *nodeMirror) Versions() ([]string, error) {
@@ -77,7 +79,12 @@ func (n *nodeMirror) os() string {
 	return runtime.GOOS
 }
 
-func (n *nodeMirror) arch() string {
+func (n *nodeMirror) arch(ver string) string {
+	// Note: Supports for darwin.arm64 after v.16.0
+	if runtime.GOARCH == "arm64" && runtime.GOOS == "darwin" &&
+		semver.Compare(ver, "v1.16.0") < 0 {
+		return "amd64"
+	}
 	archMapping := map[string]string{
 		"amd64":   "x64",
 		"386":     "x86",

@@ -1,17 +1,22 @@
 # xvm
-xvm is a tool that provides version management for multiple sdks, such as golang/nodejs, allowing you to dynamically specify a version through a version file without installation.
+
+Xvm is a wrapper for popular sdk (Go/Node/...) written in Go. It automatically picks a good version of sdk given your current working directory, downloads it from the official server (if required) and then transparently passes through all command-line arguments to the real sdk binary.  You can call it just like you would call go/node/java/...
 
 ## Usage
 
+### Installation
+
 ### Activate SDK
 
-Activate Golang/Node SDK:
+Activate Golang/Node:
 
 ```shell
 $ xvm activate go node --add_binpath
 ```
 
-Open a new terminal:
+You've got Golang and Node that can be any version.
+
+Open a new terminal and call the following command to experience the xvm-wrapped sdk:
 
 ```shell
 # Uses the latest version of the go
@@ -24,7 +29,7 @@ $ node version
 $ npm version
 ```
 
-### Version AsCode
+### About Version
 
 #### Go
 
@@ -41,8 +46,6 @@ If `.goversion` is not found in the project root directory, it will try to find 
 If the `go.mod` file in the root of your project has the following content, the version of `Go` will always be 1.21.0 in your project:
 
 ```text
-module github.com/modern-devops/xvm
-
 go 1.21.0
 ```
 
@@ -60,8 +63,3 @@ If the `.nodeversion` file in the root of your project has the following content
 
 If `.nodeversion` is not found in the project root directory, it will try to find it in the user's home.
 
-### Show Detail
-
-```shell
-xvm show
-```

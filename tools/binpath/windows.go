@@ -20,35 +20,17 @@ const (
 
 // AddUserPath add paths to user's environment path
 func AddUserPath(paths ...string) error {
-	op, err := getValue(path)
-	if err != nil {
-		return fmt.Errorf(`failed to get value: %s, %w`, path, err)
-	}
-	paths = filterNewPaths(op, paths...)
-	if err := addToXvmPath(paths); err != nil {
+	if err := setToXvmPath(paths); err != nil {
 		return err
 	}
 	return addXvmToEnvPath()
 }
 
-func PathsPlaceholder(paths ...string) string {
-	return strings.Join(paths, string(os.PathListSeparator))
-}
-
-func addToXvmPath(paths []string) error {
-	xvmValue, err := getValue(xvm)
-	if err != nil {
-		return fmt.Errorf(`failed to get value: %s, %w`, xvm, err)
-	}
-	newPaths := filterNewPaths(xvmValue, paths...)
-	if len(newPaths) == 0 {
+func setToXvmPath(paths []string) error {
+	if len(paths) == 0 {
 		return nil
 	}
-	separator := string(os.PathListSeparator)
-	if xvmValue != "" {
-		newPaths = append(newPaths, strings.Split(xvmValue, separator)...)
-	}
-	if err := setValue(xvm, strings.Join(newPaths, separator)); err != nil {
+	if err := setValue(xvm, strings.Join(paths, string(os.PathListSeparator))); err != nil {
 		return fmt.Errorf(`failed to set value: %s, %w`, xvm, err)
 	}
 	return nil

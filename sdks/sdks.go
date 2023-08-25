@@ -25,6 +25,7 @@ type UserIsolatedInstaller struct {
 	RootPath     string
 	SdkStashPath string
 	BinPath      string
+	DataPath     string
 	ConfigPath   string
 	Sdks         []Sdk
 }
@@ -35,6 +36,7 @@ func NewUserIsolatedInstaller(home string, sdks []Sdk) *UserIsolatedInstaller {
 		RootPath:     rp,
 		SdkStashPath: filepath.Join(rp, "sdk"),
 		BinPath:      filepath.Join(rp, "bin"),
+		DataPath:     filepath.Join(rp, "data"),
 		ConfigPath:   filepath.Join(rp, "config.ini"),
 		Sdks:         sdks,
 	}
