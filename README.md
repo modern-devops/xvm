@@ -20,7 +20,7 @@ For Mac/Linux:
 
 ```shell
 # 1. Download the file to /path/to/xvm
-curl -o /path/to/xvm -# -k {url}
+$ wget -O /path/to/xvm {url}
 
 # 2. Add an executable permission
 $ chmod +x /path/to/xvm
