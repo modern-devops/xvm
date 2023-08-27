@@ -118,6 +118,8 @@ If the `.javaversion` file in the root of your project has the following content
 20.0.2
 ```
 
+If `.javaversion` is not found in the project root directory, it will try to find it in the user's home.
+
 ## SDK Mirror
 
 By default, `Xvm` gets all available versions through the official indexing api and retrieves releases from official mirror.
