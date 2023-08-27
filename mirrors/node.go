@@ -59,7 +59,7 @@ func (f files) Pick() *nodeFile {
 		return file.IsMacArch("arm64")
 	})
 	i := slices.IndexFunc(f, func(file *nodeFile) bool {
-		if hasArmMac {
+		if runtime.GOOS != "darwin" || hasArmMac {
 			return file.Match()
 		}
 		// uses amd64 instead of arm64

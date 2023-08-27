@@ -105,5 +105,8 @@ func getGoModuleVersion(gm string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("parse %s failed, %w", gm, err)
 	}
+	if strings.Count(f.Go.Version, ".") == 1 {
+		return f.Go.Version + ".0", nil
+	}
 	return f.Go.Version, nil
 }
