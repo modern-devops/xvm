@@ -26,7 +26,7 @@ const (
 func New(name, bin, command string, options ...Option) (string, error) {
 	err := os.MkdirAll(bin, fileMode)
 	if err != nil {
-		return "", fmt.Errorf("failed to create directory: %s, %w", bin, err)
+		return "", fmt.Errorf("Failed to create directory: %s, %w", bin, err)
 	}
 	option := applyOptions(options)
 	if runtime.GOOS != "windows" {
@@ -81,7 +81,7 @@ func linkToUnixLike(name, bin, command string, options Option) (string, error) {
 	}
 	template := shellTemplate(command)
 	if err := os.WriteFile(file, template, fileMode); err != nil {
-		return "", fmt.Errorf("failed to create file: %s, %w", file, err)
+		return "", fmt.Errorf("Failed to create file: %s, %w", file, err)
 	}
 	return file, nil
 }

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,7 +15,6 @@ import (
 	"github.com/modern-devops/xvm/tools"
 	"github.com/modern-devops/xvm/tools/linker"
 
-	"github.com/go-resty/resty/v2"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/mod/semver"
 )
@@ -73,34 +71,38 @@ func (i *UserIsolatedInstaller) Install(name string) (*SdkTool, error) {
 	if err != nil {
 		return nil, err
 	}
-	version, err := st.GetVersion()
+	version, err := i.GetVersion(st.Sdk)
 	if err != nil {
 		return nil, err
 	}
-	wp := filepath.Join(i.SdkStashPath, st.Info().Name, version)
-	st.Root = wp
-	df := filepath.Join(wp, ".done")
+	var vd *mirrors.VersionDesc
+	if version == "" {
+		if vd, err = i.LatestVersion(st.Sdk); err != nil {
+			return nil, err
+		}
+		version = strings.TrimPrefix(vd.Version, "v")
+	}
+	st.Root = filepath.Join(i.SdkStashPath, st.Info().Name, version)
+	df := filepath.Join(st.Root, ".done")
 	if _, err := os.Stat(df); err == nil {
 		return st, nil
 	}
-	log.Info().Msgf("Installing %s@%s ...", st.Info().Name, version)
-	if err := os.RemoveAll(wp); err != nil {
-		return nil, fmt.Errorf("failed to remove dir: [%s], Please check: %w", wp, err)
+	log.Info().Msgf("Installing %s@v%s ...", st.Info().Name, version)
+	if err := os.RemoveAll(st.Root); err != nil {
+		return nil, fmt.Errorf("Failed to remove dir: [%s], Please check: %w", st.Root, err)
 	}
-	url, err := st.Info().Mirror.GetURL(version)
-	if err != nil {
-		return nil, err
+	if vd == nil {
+		if vd, err = st.VersionDesc(version); err != nil {
+			return nil, err
+		}
 	}
-	log.Info().Msgf("Detecting %s ...", url)
-	if err := detect(url); err != nil {
-		return nil, err
-	}
-	if err := i.downloadAndExtracting(url, wp); err != nil {
+	// TODO(buthim): checksum
+	if err := i.downloadAndExtracting(vd.URL, st.Root); err != nil {
 		return nil, err
 	}
 	if pi := st.Info().PostInstall; pi != nil {
 		log.Info().Msgf("Configuring ...")
-		if err := pi(wp); err != nil {
+		if err := pi(st.Root); err != nil {
 			return nil, err
 		}
 	}
@@ -127,27 +129,45 @@ func (i *UserIsolatedInstaller) GetSdk(name string) (Sdk, error) {
 	return nil, fmt.Errorf("unknown sdk: %s, allows %s", name, strings.Join(names, ","))
 }
 
-func (s *SdkTool) GetVersion() (string, error) {
-	if v := os.Getenv(fmt.Sprintf("XVM_%s_VERSION", strings.ToUpper(s.Sdk.Info().Name))); v != "" {
-		return strings.TrimSuffix(v, "v"), nil
+func (i *UserIsolatedInstaller) GetVersion(sdk Sdk) (string, error) {
+	if v := os.Getenv(fmt.Sprintf("XVM_%s_VERSION", strings.ToUpper(sdk.Info().Name))); v != "" {
+		return strings.TrimPrefix(v, "v"), nil
 	}
-	version, err := s.Sdk.Version()
+	v, err := sdk.Version()
 	if err != nil {
 		return "", err
 	}
-	if version != "" {
-		return version, nil
-	}
+	return strings.TrimPrefix(v, "v"), nil
+}
 
-	// uses latest version
-	versions, err := s.Sdk.Info().Mirror.Versions()
+func (i *UserIsolatedInstaller) LatestVersion(sdk Sdk) (*mirrors.VersionDesc, error) {
+	versions, err := sdk.Info().Mirror.Versions()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if len(versions) == 0 {
-		return "", errors.New("no version is available")
+		return nil, errors.New("no version found for thecurrent machine")
 	}
-	return slices.MaxFunc(versions, semver.Compare), nil
+	return slices.MaxFunc(versions, func(a, b *mirrors.VersionDesc) int {
+		return semver.Compare(a.Version, b.Version)
+	}), nil
+}
+
+func (s *SdkTool) VersionDesc(ver string) (*mirrors.VersionDesc, error) {
+	versions, err := s.Sdk.Info().Mirror.Versions()
+	if err != nil {
+		return nil, err
+	}
+	if len(versions) == 0 {
+		return nil, errors.New("no version found for thecurrent machine")
+	}
+	i := slices.IndexFunc(versions, func(desc *mirrors.VersionDesc) bool {
+		return strings.TrimPrefix(desc.Version, "v") == ver
+	})
+	if i == -1 {
+		return nil, fmt.Errorf("invalid version: %s", ver)
+	}
+	return versions[i], nil
 }
 
 func (s *SdkTool) Info() *SdkInfo {
@@ -220,7 +240,7 @@ func sdkToolNames(sdk Sdk) []string {
 func (i *UserIsolatedInstaller) downloadAndExtracting(url string, path string) error {
 	temp, err := os.MkdirTemp("", "")
 	if err != nil {
-		return fmt.Errorf("failed to make temp dir: %w", err)
+		return fmt.Errorf("Failed to make temp dir: %w", err)
 	}
 	defer func() {
 		_ = os.RemoveAll(temp)
@@ -228,12 +248,12 @@ func (i *UserIsolatedInstaller) downloadAndExtracting(url string, path string) e
 	log.Info().Msgf("Downloading %s ...", url)
 	filename, err := tools.Download(url, temp)
 	if err != nil {
-		return fmt.Errorf("failed to download: %w", err)
+		return fmt.Errorf("Failed to download: %w", err)
 	}
 	log.Info().Msgf("Extracting to %s ...", path)
 	err = tools.Unarchive(filename, path)
 	if err != nil {
-		return fmt.Errorf("failed to extracting: %w", err)
+		return fmt.Errorf("Failed to extracting: %w", err)
 	}
 	return nil
 }
@@ -249,15 +269,4 @@ func (i *UserIsolatedInstaller) done(d *SdkInfo, df string) error {
 	}
 	_, err = f.Write(data)
 	return err
-}
-
-func detect(url string) error {
-	rsp, err := resty.New().R().Head(url)
-	if err != nil {
-		return fmt.Errorf("failed to probe this url: [%s], Please check: %w", url, err)
-	}
-	if rsp != nil && rsp.StatusCode() == http.StatusNotFound {
-		return fmt.Errorf("this url was not found: %s", url)
-	}
-	return nil
 }

@@ -2,12 +2,14 @@ package tools
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/go-resty/resty/v2"
 	"github.com/google/uuid"
+	"github.com/schollz/progressbar/v3"
 )
 
 const contentDisposition = "Content-Disposition"
@@ -18,8 +20,8 @@ func Download(url string, path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if resp.IsError() {
-		return "", fmt.Errorf("failed to download: %s", resp.String())
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("Failed to download, status: %d", resp.StatusCode)
 	}
 	return rename(resp, fp)
 }
@@ -37,11 +39,25 @@ func getFilename(url string) string {
 	return filename
 }
 
-func download(url, filename string) (*resty.Response, error) {
-	return resty.New().R().SetOutput(filename).Get(url)
+func download(url, filename string) (*http.Response, error) {
+	resp, _ := http.Get(url)
+	defer resp.Body.Close()
+
+	if err := os.MkdirAll(filepath.Dir(filename), os.ModeDir); err != nil {
+		return nil, err
+	}
+	f, _ := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
+	defer f.Close()
+
+	bar := progressbar.DefaultBytes(
+		resp.ContentLength,
+		"downloading",
+	)
+	_, err := io.Copy(io.MultiWriter(f, bar), resp.Body)
+	return resp, err
 }
 
-func rename(resp *resty.Response, fp string) (string, error) {
+func rename(resp *http.Response, fp string) (string, error) {
 	name := readFileName(resp)
 	if name == "" {
 		return fp, nil
@@ -57,8 +73,8 @@ func rename(resp *resty.Response, fp string) (string, error) {
 	return newPath, nil
 }
 
-func readFileName(rsp *resty.Response) string {
-	content := rsp.Header().Get(contentDisposition)
+func readFileName(rsp *http.Response) string {
+	content := rsp.Header.Get(contentDisposition)
 	if content == "" {
 		return ""
 	}

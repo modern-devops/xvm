@@ -49,10 +49,13 @@ func (n *nvm) Info() *sdks.SdkInfo {
 			return nil
 		},
 		PostInstall: func(wp string) error {
-			if tools.IsWindows() {
-				return os.Symlink(filepath.Join(wp, nodeCommandFile()), filepath.Join(prefix, nodeCommandFile()))
+			if !tools.IsWindows() {
+				return nil
 			}
-			return nil
+			if err := os.MkdirAll(prefix, os.ModeDir); err != nil {
+				return err
+			}
+			return os.Symlink(filepath.Join(wp, nodeCommandFile()), filepath.Join(prefix, nodeCommandFile()))
 		},
 	}
 }

@@ -40,7 +40,7 @@ func (g *gvm) Info() *sdks.SdkInfo {
 				Path: filepath.Join(bin, tools.CommandFile(golang)),
 			},
 		},
-		BinPaths: []string{filepath.Join(goPath, "bin")},
+		BinPaths: []string{filepath.Join(goPath, bin)},
 		Mirror:   mirrors.Go(),
 		WithEnvs: func(wp string) []string {
 			return []string{goroot + "=" + wp, gopath + "=" + goPath}

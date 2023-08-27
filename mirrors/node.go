@@ -1,96 +1,118 @@
 package mirrors
 
 import (
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
 	"runtime"
+	"slices"
 
-	"github.com/modern-devops/xvm/tools"
-
-	"golang.org/x/mod/semver"
+	"github.com/go-resty/resty/v2"
 )
 
+const node = "node"
+
 type nodeMirror struct {
-	NodeBaseMirror string `json:"Base"`
+	BaseMirror string `json:"base"`
+	API        string `json:"api"`
 }
 
 func Node() Mirror {
 	return &nodeMirror{
-		NodeBaseMirror: overwriteMirror("node", "https://nodejs.org/dist"),
+		BaseMirror: overwriteMirror(node, "https://nodejs.org/dist"),
+		API:        overwriteAPI(node, "https://nodejs.org/dist/index.json"),
 	}
 }
 
-func (n *nodeMirror) GetURL(v string) (string, error) {
-	arch := n.arch(v)
-	if arch == "" {
-		return "", fmt.Errorf("unsupported arch: %s, "+
-			"You can access %s to confirm if your arch is supported", runtime.GOARCH, n.NodeBaseMirror)
-	}
-	return fmt.Sprintf("%s/%s/node-%s-%s-%s.%s", n.NodeBaseMirror, v, v, n.os(), n.arch(v), n.ext()), nil
-}
-
-func (n *nodeMirror) Versions() ([]string, error) {
-	versionListURL := n.NodeBaseMirror + "/index.json"
-	rsp, err := http.Get(versionListURL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to request: %s, %w", versionListURL, err)
-	}
-	defer rsp.Body.Close()
-	body, err := io.ReadAll(rsp.Body)
+func (n *nodeMirror) Versions() ([]*VersionDesc, error) {
+	var nvs []nodeVersion
+	_, err := resty.New().R().SetResult(&nvs).Get(n.API)
 	if err != nil {
 		return nil, err
 	}
-	var items []map[string]interface{}
-	if err := json.Unmarshal(body, &items); err != nil {
-		return nil, err
-	}
-	versions := make([]string, 0, len(items))
-	for _, item := range items {
-		for k, v := range item {
-			if k == "version" {
-				versions = append(versions, v.(string))
-			}
+	var versions []*VersionDesc
+	for _, nv := range nvs {
+		nf := nv.Files.Pick()
+		if nf == nil {
+			continue
 		}
+		filename := nf.VersionFilename(nv.Version)
+		if filename == "" {
+			continue
+		}
+		versions = append(versions, &VersionDesc{
+			URL:      n.BaseMirror + "/" + nv.Version + "/" + filename,
+			Filename: filename,
+			Version:  nv.Version,
+		})
 	}
 	return versions, nil
 }
 
 func (n *nodeMirror) BaseURL() string {
-	return n.NodeBaseMirror
+	return n.BaseMirror
 }
 
-func (n *nodeMirror) getFullNodeURL(path string) string {
-	return n.NodeBaseMirror + path
+type nodeFile string
+
+type files []*nodeFile
+
+func (f files) Pick() *nodeFile {
+	hasArmMac := slices.ContainsFunc(f, func(file *nodeFile) bool {
+		return file.IsMacArch("arm64")
+	})
+	i := slices.IndexFunc(f, func(file *nodeFile) bool {
+		if hasArmMac {
+			return file.Match()
+		}
+		// uses amd64 instead of arm64
+		return file.IsMacArch("amd64")
+	})
+	if i == -1 {
+		return nil
+	}
+	return f[i]
 }
 
-func (n *nodeMirror) ext() string {
-	if tools.IsWindows() {
-		return zip
+func (f nodeFile) Match() bool {
+	oa, ok := nfm[string(f)]
+	if !ok {
+		return false
 	}
-	return tar
+	return oa.os == runtime.GOOS && oa.arch == runtime.GOARCH
 }
 
-func (n *nodeMirror) os() string {
-	if tools.IsWindows() {
-		return "win"
+func (f nodeFile) IsMacArch(arch string) bool {
+	oa, ok := nfm[string(f)]
+	if !ok {
+		return false
 	}
-	return runtime.GOOS
+	return oa.os == "darwin" && oa.arch == arch
 }
 
-func (n *nodeMirror) arch(ver string) string {
-	// Note: Supports for darwin.arm64 after v.16.0
-	if runtime.GOARCH == "arm64" && runtime.GOOS == "darwin" &&
-		semver.Compare(ver, "v1.16.0") < 0 {
-		return "amd64"
+func (f nodeFile) VersionFilename(version string) string {
+	oa, ok := nfm[string(f)]
+	if !ok {
+		return ""
 	}
-	archMapping := map[string]string{
-		"amd64":   "x64",
-		"386":     "x86",
-		"arm64":   "arm64",
-		"ppc64le": "ppc64le",
-		"s390x":   "s390x",
-	}
-	return archMapping[runtime.GOARCH]
+	return "node-" + version + "-" + oa.filename
+}
+
+type nodeVersion struct {
+	Version string `json:"version"`
+	Files   files  `json:"files"`
+}
+
+var nfm = map[string]nodeOsArchDesc{
+	"linux-arm64":   {os: "linux", arch: "arm64", filename: "linux-arm64." + tar},
+	"linux-x64":     {os: "linux", arch: "arm64", filename: "linux-x64." + tar},
+	"linux-ppc64le": {os: "linux", arch: "ppc64le", filename: "linux-ppc64le." + tar},
+	"linux-s390x":   {os: "linux", arch: "s390x", filename: "linux-s390x." + tar},
+	"osx-arm64-tar": {os: "darwin", arch: "arm64", filename: "darwin-arm64." + tar},
+	"osx-x64-tar":   {os: "darwin", arch: "amd64", filename: "darwin-x64." + tar},
+	"win-x64-zip":   {os: "windows", arch: "amd64", filename: "win-x64." + zip},
+	"win-x86-zip":   {os: "windows", arch: "386", filename: "win-x86." + zip},
+}
+
+type nodeOsArchDesc struct {
+	os       string
+	arch     string
+	filename string
 }
