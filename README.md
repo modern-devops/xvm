@@ -16,7 +16,7 @@ You can download `Xvm` binary on our [Releases](https://github.com/modern-devops
 
 See the following to ensure that the command `xvm` is available.
 
-For Mac/Linux:
+For Macos/Linux:
 
 ```shell
 # 1. Download the file to /path/to/xvm
