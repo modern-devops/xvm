@@ -102,7 +102,7 @@ type nodeVersion struct {
 
 var nfm = map[string]nodeOsArchDesc{
 	"linux-arm64":   {os: "linux", arch: "arm64", filename: "linux-arm64." + tar},
-	"linux-x64":     {os: "linux", arch: "arm64", filename: "linux-x64." + tar},
+	"linux-x64":     {os: "linux", arch: "amd64", filename: "linux-x64." + tar},
 	"linux-ppc64le": {os: "linux", arch: "ppc64le", filename: "linux-ppc64le." + tar},
 	"linux-s390x":   {os: "linux", arch: "s390x", filename: "linux-s390x." + tar},
 	"osx-arm64-tar": {os: "darwin", arch: "arm64", filename: "darwin-arm64." + tar},
